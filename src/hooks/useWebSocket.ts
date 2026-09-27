@@ -32,11 +32,29 @@ function addJitter(delay: number, jitterFactor: number = JITTER_FACTOR): number 
  *
  * After max attempts, status becomes "unavailable" and manual reconnect is required.
  */
-export function useWebSocket<T>(url: string | null) {
+export type WebSocketOptions<T> = {
+  /** Validate a raw frame; return null to drop it. Defaults to JSON.parse. */
+  parse?: (raw: unknown) => T | null;
+};
+
+const MAX_FRAME_CHARS = 64 * 1024;
+
+function defaultParse<T>(raw: unknown): T | null {
+  if (typeof raw !== "string" || raw.length > MAX_FRAME_CHARS) return null;
+  return JSON.parse(raw) as T;
+}
+
+export function useWebSocket<T>(url: string | null, options: WebSocketOptions<T> = {}) {
   const [status, setStatus] = useState<WebSocketStatus>("connecting");
   const [lastMessage, setLastMessage] = useState<T | null>(null);
+  // Increments on every transition into `open` after a prior disconnect so
+  // consumers can backfill anything missed while offline.
+  const [reconnectCount, setReconnectCount] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
   const attemptsRef = useRef(0);
+  const hasOpenedRef = useRef(false);
+  const parseRef = useRef(options.parse ?? defaultParse<T>);
+  parseRef.current = options.parse ?? defaultParse<T>;
 
   useEffect(() => {
     if (!url) {
@@ -64,13 +82,16 @@ export function useWebSocket<T>(url: string | null) {
         // A successful connection clears the accumulated backoff and attempts
         // so a later outage starts over at the initial delay.
         attemptsRef.current = 0;
+        if (hasOpenedRef.current) setReconnectCount((n) => n + 1);
+        hasOpenedRef.current = true;
         setStatus("open");
       };
 
       socket.onmessage = (event) => {
         if (cancelled) return;
         try {
-          setLastMessage(JSON.parse(event.data) as T);
+          const parsed = parseRef.current(event.data);
+          if (parsed !== null) setLastMessage(parsed);
         } catch {
           // Ignore malformed frames rather than crashing the feed.
         }
@@ -126,5 +147,5 @@ export function useWebSocket<T>(url: string | null) {
     };
   }, [url, status]);
 
-  return { status, lastMessage };
+  return { status, lastMessage, reconnectCount };
 }

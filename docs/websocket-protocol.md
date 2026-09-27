@@ -55,6 +55,50 @@ Seeds from REST `/intents/feed` (`src/hooks/useActivityFeed.ts`) and layers live
 | `status`    | `string` | Enum: `pending`, `accepted`, `filled`, `failed` |
 | `createdAt` | `string` | ISO-8601 UTC timestamp                          |
 
+## Accepted Message Shapes & Validation
+
+Every frame is validated by `parseFeedItemFrame`
+([`src/lib/realtime/quarantine.ts`](../src/lib/realtime/quarantine.ts)) before it
+reaches state. Two shapes are accepted:
+
+```json
+{ "id": "i1", "srcChain": "ethereum", "srcToken": "USDC", "srcAmount": "10.5",
+  "dstToken": "USDC", "solver": "Alpha", "status": "pending",
+  "createdAt": "2026-07-14T00:00:00Z", "version": 3, "updatedAt": "2026-07-14T00:01:00Z" }
+```
+
+```json
+{ "type": "intent", "data": { "...": "FeedItem as above" } }
+```
+
+Rules:
+
+- Frames larger than 64 KB are dropped.
+- Envelopes with any `type` other than `"intent"` are ignored silently.
+- Keys `__proto__`, `constructor` and `prototype` reject the frame.
+- `status` must be one of `pending | accepted | filled | failed`; `srcAmount`
+  must be a decimal string (not a number); dates must be valid ISO strings;
+  `version`, when present, must be a number.
+- Unknown fields are stripped and all string fields pass through
+  `sanitizeDisplayText`.
+- Rejected frames are counted and the last 20 kept (truncated preview) for
+  dev diagnostics (`getQuarantineDiagnostics()`); a rate-limited
+  `secureLogger.warn` fires in development only. End users see nothing.
+
+## Reconnect & Backfill (Assumed Relay Contract)
+
+The relay does not replay missed frames. The client assumes:
+
+- A reconnect may have missed any number of frames; after every transition to
+  `open` following a disconnect, the REST snapshot for the active view is
+  revalidated (deduplicated, at most once per 5 s, ignored after unmount).
+- `version` (preferred) or `updatedAt`, when present, increase monotonically per
+  intent; older frames are discarded. Without either, arrival order wins but
+  status may never regress (`filled → pending` is rejected), which is
+  clock-skew safe.
+- If the relay later supports `?since=` / cursors, only the delta needs to be
+  fetched; the store already merges partial snapshots without clearing rows.
+
 ## App-Wide Status-Change Alerts
 
 `useIntentStatusWatcher` (`src/hooks/useIntentStatusWatcher.ts`), mounted via

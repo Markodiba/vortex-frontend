@@ -24,6 +24,10 @@ export const en = {
 
   "activityFeed.status.live": "Live",
   "activityFeed.status.polling": "Polling",
+  "realtime.catchingUp": "Catching up…",
+  "intent.optimistic.pending": "Submitted, awaiting relay confirmation",
+  "intent.optimistic.unconfirmed": "Not yet confirmed by the relay",
+  "intent.optimistic.checkStatus": "Check status",
   "activityFeed.error.unavailable": "Live feed unavailable right now.",
   "activityFeed.empty": "No fills yet.",
   "activityFeed.item.route": "{chain} · via {solver}",

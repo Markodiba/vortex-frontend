@@ -18,20 +18,42 @@ list) follow the same two-source pattern:
    see `RECONNECT_DELAY_MS`) and each new message is merged on top of the REST
    snapshot, newest first, deduped by `id`.
 
-This is implemented twice, at two different sizes:
+Both sources are ingested into one normalized entity store,
+[`useIntentStore`](../src/store/intents.ts), through a single
+`ingest(items, source, view?)` action:
 
-- [`useIntentFeed`](../src/hooks/useIntentFeed.ts) — seeds from
-  [`useActivityFeed`](../src/hooks/useActivityFeed.ts) (SWR, `refreshInterval: 8000`)
-  and caps the merged list at 8 items. Used for the homepage's small preview list.
-- [`useLiveIntents`](../src/hooks/useLiveIntents.ts) — seeds from
-  [`useIntents`](../src/hooks/useIntents.ts) (plain SWR, no polling interval) and
-  caps the merged list at 200 items. Used for the full explore/browse view.
+- `byId` holds one record per intent id; `views` holds ordered id lists for the
+  `feed` (homepage, cap 8), `explore` (cap 200) and `mine` views, newest first.
+- Every write goes through the pure
+  [`reconcile`](../src/lib/realtime/reconcile.ts): status transitions are
+  monotonic (`pending → accepted → filled|failed`; regressions are rejected),
+  the higher `version`/`updatedAt` wins, and fields are merged so a
+  `FeedItem` never overwrites richer `IntentDetail` fields.
+- Eviction is LRU by `receivedAt` once the store exceeds 1000 entries.
+- Components read through memoised selectors (`selectFeed(limit)`,
+  `selectExplore(limit)`, `selectMine(address)`, `selectById(id)`), so they
+  re-render only when the ids or records they display change.
 
-Both hooks share the same shape of internals: a local `mergeById` de-duper, a
-`liveItems` state array appended to on every WebSocket message, and an `isLive`
-flag derived from the WebSocket's `status === "open"`. If you need a third feed
-of this kind, follow this pattern (REST hook via SWR + `useWebSocket` + local
-merge-by-id state) rather than inventing a new one.
+[`useIntentFeed`](../src/hooks/useIntentFeed.ts),
+[`useLiveIntents`](../src/hooks/useLiveIntents.ts) and
+[`useMyLiveIntents`](../src/hooks/useMyLiveIntents.ts) keep their public API but
+are thin wrappers around [`useLiveIntentView`](../src/hooks/useLiveIntentView.ts),
+which ingests the SWR snapshot, subscribes to validated WebSocket frames and,
+on every reconnect, revalidates the SWR key to backfill missed updates
+(`isCatchingUp` is true meanwhile; existing rows are never cleared).
+
+Optimistic submissions (see `useSwapSubmission`) are also stored here:
+
+```
+submitIntent start ──► optimistic (pending) ──► REST/WS record ──► confirmed (replaced in place)
+        │                     │
+        │ failure             └─ 60 s without a record ──► unconfirmed ("Check status")
+        ▼
+   rolled back (removed, error toast once)
+```
+
+Optimistic entries are never persisted, are dropped on wallet account change,
+and are excluded from analytics and CSV exports.
 
 The WebSocket URL for all of these is
 `process.env.NEXT_PUBLIC_WS_URL`, and `useWebSocket(null)` is the deliberate way

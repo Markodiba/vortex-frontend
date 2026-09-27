@@ -45,6 +45,10 @@ export type FeedItem = {
   status: IntentStatus;
   createdAt: string;
   deadline?: string;
+  /** Monotonic per-intent version, when the relay provides one. */
+  version?: number;
+  /** ISO timestamp of the last server-side change, when provided. */
+  updatedAt?: string;
 };
 
 export type IntentDetail = FeedItem & {

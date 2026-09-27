@@ -65,7 +65,7 @@ export default function MyIntentsPage() {
   const address = useWalletStore((s) => s.address);
   const isConnected = useWalletStore((s) => s.isConnected);
 
-  const { intents, isLoading, error, isLive, mutate } = useMyLiveIntents(address);
+  const { intents, isLoading, error, isLive, isCatchingUp, mutate } = useMyLiveIntents(address);
 
   const [statusFilter, setStatusFilter] = useState<IntentStatus | "all">("all");
   const [chainFilter, setChainFilter] = useState<string>("all");
@@ -104,7 +104,7 @@ export default function MyIntentsPage() {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
 
-  const exportCsv = useMemo(() => buildIntentsCsv(filtered, selectedColumns), [filtered, selectedColumns]);
+  const exportCsv = useMemo(() => buildIntentsCsv(filtered.filter((i) => !i.optimistic), selectedColumns), [filtered, selectedColumns]);
 
   const handleExportCsv = () => {
     downloadCsv("vortex-my-intents.csv", exportCsv);
@@ -133,6 +133,7 @@ export default function MyIntentsPage() {
             <div className="flex items-center gap-1.5 text-[10px] text-vx-muted px-1 pt-1 flex-shrink-0">
               <span aria-hidden="true" className={`state-dot ${isLive ? "bg-vx-sage" : "bg-vx-dim"}`} />
               {isLive ? t("activityFeed.status.live") : t("activityFeed.status.polling")}
+              {isCatchingUp && <span role="status"> · {t("realtime.catchingUp")}</span>}
             </div>
           )}
         </div>
@@ -305,6 +306,20 @@ export default function MyIntentsPage() {
                           </div>
                           <IntentStatusBadge status={item.status} />
                         </Link>
+                        {item.optimistic && (
+                          <div role="status" className="text-xs text-vx-muted italic flex items-center gap-2">
+                            {item.unconfirmed ? t("intent.optimistic.unconfirmed") : t("intent.optimistic.pending")}
+                            {item.unconfirmed && (
+                              <button
+                                type="button"
+                                onClick={() => void mutate()}
+                                className="underline text-vx-text focus-visible:outline focus-visible:outline-2"
+                              >
+                                {t("intent.optimistic.checkStatus")}
+                              </button>
+                            )}
+                          </div>
+                        )}
                         <div className="self-start sm:self-center flex items-center gap-3">
                           <IntentStatusBadge status={item.status} />
                           <button

@@ -54,7 +54,9 @@ function getChainColor(chainId: string): string {
   return CHAINS.find((chain) => chain.id === chainId)?.color ?? "#4CEBA8";
 }
 
-export function computeAnalytics(intents: FeedItem[]): AnalyticsSummary {
+export function computeAnalytics(allIntents: FeedItem[]): AnalyticsSummary {
+  // Optimistic (unconfirmed client-side) entries never count toward analytics.
+  const intents = allIntents.filter((i) => !(i as { optimistic?: boolean }).optimistic);
   const statusCounts: Record<IntentStatus, number> = {
     pending: 0,
     accepted: 0,
