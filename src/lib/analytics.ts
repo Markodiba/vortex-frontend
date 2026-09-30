@@ -1,5 +1,9 @@
 import { CHAINS, DST_TOKENS, SRC_TOKENS } from "@/lib/marketData";
 import type { FeedItem, IntentStatus } from "@/lib/types";
+import { fromNumber, mul, toNumber, tryParseDecimal } from "@/lib/decimal";
+
+/** Per-intent USD volume is computed exactly at micro-dollar precision. */
+const USD_DECIMALS = 6;
 
 export type AnalyticsBreakdownEntry = {
   label: string;
@@ -75,9 +79,12 @@ export function computeAnalytics(allIntents: FeedItem[]): AnalyticsSummary {
   let rollingVolumeUsd = 0;
 
   for (const intent of intents) {
-    const amount = Number.parseFloat(intent.srcAmount ?? "0");
+    const amount = tryParseDecimal(intent.srcAmount ?? "0", 18);
     const tokenPriceUsd = getTokenPriceUsd(intent.srcChain, intent.srcToken);
-    const volumeUsd = Number.isFinite(amount) ? amount * tokenPriceUsd : 0;
+    // Exact decimal product; converted to a number only for chart aggregation.
+    const volumeUsd = amount && Number.isFinite(tokenPriceUsd)
+      ? toNumber(mul(amount, fromNumber(tokenPriceUsd, USD_DECIMALS), USD_DECIMALS))
+      : 0;
 
     totalVolumeUsd += volumeUsd;
 

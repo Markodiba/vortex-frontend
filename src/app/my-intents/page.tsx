@@ -13,7 +13,6 @@ import { useIntent } from "@/hooks/useIntent";
 import { CHAINS } from "@/lib/marketData";
 import { downloadCsv, buildIntentsCsv } from "@/lib/csv";
 import { SkeletonCard } from "@/components/Skeleton";
-import { buildIntentsCsv, downloadCsv } from "@/lib/csv";
 import type { IntentStatus } from "@/lib/types";
 
 const STATUS_OPTIONS: Array<IntentStatus | "all"> = [
